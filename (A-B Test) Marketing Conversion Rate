@@ -1,0 +1,179 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Mar 11 16:03:59 2022
+
+@author: Gage
+"""
+
+### Please use control / test CSV files found in this repository 
+############################################################
+
+
+############## A-B Testing Practice ########################
+############################################################
+########## A company has introduced a new way of    
+########## bidding for items on their website, they 
+########## have asked us to evaluate the efficacy of
+########## this new feature through a simple A-B Test. 
+########## Below is the Control group that has the 
+########## original way of bidding, as well as the 
+########## Test group, which tracks sales with the
+########## new bidding feature.  Conversation rate 
+########## is calculated by dividing the number of 
+########## sales by the number of visitors.
+############################################################
+
+
+
+
+import statistics
+import pandas as pd
+import matplotlib.pyplot as plt
+from scipy import stats
+from scipy.stats import mannwhitneyu
+import seaborn as sns
+from termcolor import colored
+
+Control = pd.read_csv(r'C:\Users\Gage\Desktop\Academic\Datasets\A-B_Test\Control_group.csv' , delimiter=(';'))
+
+Test = pd.read_csv(r'C:\Users\Gage\Desktop\Academic\Datasets\A-B_Test\Test_group.csv', delimiter=(';'))
+
+Control = Control.drop( columns = ['Campaign Name', 'Date'])
+
+Test = Test.drop( columns = ['Campaign Name', 'Date'])
+
+Control = Control.dropna()
+
+Test = Test.dropna()
+
+##################################################################################################################
+#### Calculate conversion rate
+
+Control['Conversion Rate'] =  Control['# of Purchase'] / Control['# of Website Clicks'] * 100
+
+Test['Conversion Rate'] = Test['# of Purchase'] / Test['# of Website Clicks'] * 100
+
+##################################################################################################################
+#### Calculate earnings per purchase
+
+Control['Earning per Purchase'] =  Control['Spend [USD]'] / Control['# of Website Clicks'] * 100
+
+Test['Earning per Purchase'] = Test['Spend [USD]'] / Test['# of Website Clicks'] * 100
+
+#Data Manipulation: Indication of Groups in A New Variable
+Control["Group"] = "Control"
+Test["Group"] = "Test"
+
+##################################################################################################################
+#### Combine datsets
+
+Data = pd.concat([Control,Test], ignore_index = True)
+
+##################################################################################################################
+#### A-B Test
+
+
+variables = ['# of Impressions', '# of Website Clicks', '# of Purchase', 'Spend [USD]', 'Conversion Rate', 'Earning per Purchase']
+
+for x in variables:
+    print(colored(" A/B Testing for ","cyan", attrs=["bold",'reverse', 'blink'])+colored(x+" ","cyan", attrs=["bold",'reverse', 'blink']),"\n")
+    print(colored("Summary Statistics by Groups for "+x,"cyan", attrs=["bold"]),"\n")
+    result3 = Data.groupby("Group")[x].aggregate(["count","mean","std","median","min",max])
+    result4 = result3.transpose()
+    print(x)
+    print(result4,"\n")
+    print(colored("Histogram by Groups for "+x,"cyan", attrs=["bold"]),"\n")
+    #sns.displot(Data, x=x, hue="Group", element="step", kde=True)
+    #plt.show()
+    sns.distplot( Control[x] , color="skyblue", label="GroupA")
+    sns.distplot( Test[x] , color="red", label="GroupB")
+    plt.legend()
+    plt.show()
+
+    def normald():
+              
+        Data.boxplot(column=[x], by="Group",return_type=None)
+        plt.suptitle("")
+        print(colored("Box Plot by Groups for "+x,"cyan", attrs=["bold"]),"\n")
+        plt.show()
+        
+        print(colored("1. Step: Testing the Normality Assumption for "+x,"cyan", attrs=["bold"]),"\n")
+        GroupA_shaphiro_w, GroupA_shaphiro_p = stats.shapiro(Control[x])
+        GroupB_shaphiro_w, GroupB_shaphiro_p = stats.shapiro(Test[x])
+        print("GroupA_shaphiro_p = %.3f, GroupB_shaphiro_p = %.3f" % (GroupA_shaphiro_p, GroupB_shaphiro_p),"\n")
+    
+        if GroupA_shaphiro_p > 0.05 and GroupB_shaphiro_p > 0.05: 
+            print("Shaphiro Wilk Test resulted as p > .05 for GroupA and GroupB which indicates that H0 can NOT be rejected. " 
+                  "Accordingly distribution of "+x+" values in"+" GroupA and GroupB are likely to normal distribution.","\n")
+            return 1
+        elif GroupA_shaphiro_p < 0.05 and GroupB_shaphiro_p < 0.05:
+            print("Shaphiro Wilk Test resulted as p < .05 for GroupA and GroupB which indicates that H0 is rejected. " 
+                  "Accordingly distribution of "+x+" values in"+" GroupA and GroupB are not likely to normal distribution.","\n")
+            return 2
+        elif GroupA_shaphiro_p > 0.05 and GroupB_shaphiro_p < 0.05:
+            print("Pay Attention!: Shaphiro Wilk Test resulted as p > .05 for GroupA while p < .05 for GroupB which indicates that H0 is rejected for GroupB. " 
+                  "Accordingly you can check if the "+x+" values in"+" GroupB contain outlier or not","\n")
+            return 3
+        else :
+            print("Pay Attention!: Shaphiro Wilk Test resulted as p > .05 for GroupB while p < .05 for GroupA which indicates that H0 is rejected for GroupA. " 
+                "Accordingly you can check if the "+x+" values in"+" GroupA contain outlier or not","\n")
+            return 4
+
+    result = normald()
+    if result == 1:
+        
+            print(colored("2. Step: Testing the Homogeneity Assumption for "+x,"cyan", attrs=["bold"]),"\n")
+            levene_F, levene_p = stats.levene(Control[x], Test[x])
+            print("levene_F = %.3f, levene_p = %.3f" % (levene_F, levene_p),"\n")       
+            if levene_p > 0.05:
+                print("Levene's Test for Homogeneity resulted as p > .05 which indicates that H0 can NOT be rejected."
+                      " Accordingly variances of GroupA and GroupB are equal.","\n")
+                print(colored("3. Step: Alternative 1 -> Independent Samples t Test for "+x,"cyan", attrs=["bold"]),"\n")
+                t_value, t_Test_p = stats.ttest_ind(Control[x], Test[x], equal_var=True)
+                print("t_value = %.3f, t_Test_p = %.3f" % (t_value, t_Test_p),"\n")
+                if t_Test_p > 0.05:
+                    print("Independent Samples t Test resulted as p > .05 which indicates that H0 can NOT be rejected."
+                          " Accordingly there is no significant difference between GroupA and GroupB in "+x+" values.","\n")
+                else: 
+                    print("Independent Samples t Test resulted as p < .05 which indicates that H0 is rejected."
+                          " Accordingly there is a significant difference between GroupA and GroupB in "+x+" values.","\n")
+                    if statistics.mean(Control["Spend [USD]"]) > statistics.mean(Test["Spend [USD]"]):
+                        print("Mean of GroupA in "+x+" is greater than GroupB","\n")
+                    else:
+                        print("Mean of GroupB in "+x+" is greater than GroupA","\n")
+            else : 
+                print("Levene's Test for Homogeneity resulted as p < .05 which indicates that H0 is rejected."
+                      " Accordingly variances of GroupA and GroupB are not equal.","\n")
+                print(colored("3. Step: Alternative 1 -> Independent Samples t Test for "+x,"cyan", attrs=["bold"]),"\n")
+                t_value, t_Test_p = stats.ttest_ind(Control[x], Test[x], equal_var=False)
+                print('t_value = %.3f, t_Test_p = %.3f' % (t_value, t_Test_p),"\n")
+                if t_Test_p > 0.05:
+                    print("Independent Samples t Test resulted as p > .05 which indicates that H0 can NOT be rejected."
+                          " Accordingly there is no significant difference between GroupA and GroupB in "+x+" values.","\n")
+                else: 
+                    print("Independent Samples t Test resulted as p < .05 which indicates that H0 is rejected."
+                          " Accordingly there is a significant difference between GroupA and GroupB in "+x+" values.","\n")
+                    if statistics.mean(Control[x]) > statistics.mean(Test[x]):
+                        print("Mean of GroupA in "+x+" is greater than GroupB","\n")
+                    else:
+                        print("Mean of GroupB in "+x+" is greater than GroupA","\n")
+                    
+                    
+    elif result == 2 or result == 3 or result == 4:
+        
+            print(colored("3. Step: Alternative 2 -> Mann-Whitney U Test for "+x,"cyan", attrs=["bold"]),"\n")
+            u_value, mannw_Test_p = mannwhitneyu(Control[x], Test[x])
+            print('u_value=%.3f, mannw_Test_p=%.3f' % (u_value, mannw_Test_p),"\n")
+            if mannw_Test_p > 0.05:
+                print("Mann Whitney U Test resulted as p > .05 which indicates that H0 can NOT be rejected."
+                      " Accordingly there is no significant difference between GroupA and GroupB in distributions of "+x+" values.","\n")
+            else: 
+                print("Mann Whitney U Test resulted as p < .05 which indicates that H0 is rejected."
+                      " Accordingly there is a significant difference between GroupA and GroupB in distributions of "+x+" values.","\n")
+                if statistics.median(Control["Spend [USD]"]) > statistics.median(Test["Spend [USD]"]):
+                    print("Median of GroupA in "+x+" is greater than GroupB","\n")
+                else:
+                    print("Median of GroupB in "+x+" is greater than GroupA","\n")
+    else :
+            print("Something is wrong. Check your data!")
+
